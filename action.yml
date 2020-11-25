@@ -1,0 +1,110 @@
+name: 'iOS Build, Testflight Upload'
+
+inputs:
+  provisioning_profile_name:
+    description: 'The name of your provisioning profile'
+    required: true
+  app_workspace:
+    description: 'The workspace name of the App'
+    required: true
+  app_scheme:
+    description: 'The scheme name of the App'
+    required: true
+  team_id:
+    description: 'The team ID found in the developer portal'
+    required: true
+  bundle_id:
+    description: 'The bundle ID of the App'
+    required: true
+  itc_app_apple_id:
+    description: 'The Apple ID of the App in iTunes Connect'
+    required: true
+  itc_email:
+    description: 'The email of the user in iTunes Connect'
+    required: true
+  certificate_id:
+    description: 'The ID of the certificate in the Apple Developer Portal'
+    required: true
+  certificate_owner:
+    description: 'The name of the owner of the certificate in the Apple Developer Portal'
+    required: true
+  itc_key_id:
+    description: 'The key ID for iTunes Connect'
+    required: true
+  itc_issuer_id:
+    description: 'The issuer ID for iTunes Connect'
+    required: true
+  itc_key:
+    description: 'The private key for iTunes Connect'
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+  
+    - run: sudo gem install fastlane
+      shell: bash
+      
+    - run: |
+        cat > "$PWD/iTunesApiKey.json" << 'EOT'
+        {
+          "key_id": "${{ inputs.itc_key_id }}",
+          "issuer_id": "${{ inputs.itc_issuer_id }}",
+          "key": "${{ inputs.itc_key }}",
+          "in_house": false
+        }
+        EOT
+      shell: bash
+      
+    - run: fastlane sigh --api-key-path "$PWD/iTunesApiKey.json" --username "${{ inputs.itc_email }}"  --team_id "${{ inputs.team_id }}" --provisioning_name "${{ inputs.provisioning_profile_name }}" --filename "profile.mobileprovision" --cert_owner_name "${{ inputs.certificate_owner }}" -a "${{ inputs.bundle_id }}" --verbose
+      shell: bash
+
+    - run: bundle install
+      shell: bash
+    
+    - run: bundle exec pod install
+      shell: bash
+        
+    - run: |
+        xcodebuild -workspace ${{ inputs.app_workspace }} \
+            -scheme ${{ inputs.app_scheme }} \
+            -sdk iphoneos \
+            -configuration AppStoreDistribution \
+            -archivePath $PWD/build/App.xcarchive \
+            PROVISIONING_PROFILE_SPECIFIER="${{ inputs.provisioning_profile_name }}" CODE_SIGN_IDENTITY="iPhone Distribution" DEVELOPMENT_TEAM="${{ inputs.team_id }}" \
+            clean archive | xcpretty
+      shell: bash
+      
+    - run: |
+        cat > "$PWD/ExportOptions.plist" << 'EOT'
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>app-store</string>
+            <key>teamID</key>
+            <string>${{ inputs.team_id }}</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>${{ inputs.bundle_id }}</key>
+              <string>${{ inputs.provisioning_profile_name }}</string>
+            </dict>
+            <key>signingCertificate</key>
+            <string>iPhone Distribution</string>
+          </dict>
+        </plist>
+        EOT
+      shell: bash 
+        
+    - run: |
+        xcodebuild -archivePath $PWD/build/App.xcarchive \
+            -exportPath $PWD/build \
+            -allowProvisioningUpdates \
+            -exportOptionsPlist $PWD/ExportOptions.plist \
+            -exportArchive | xcpretty
+      shell: bash
+      
+    - run: fastlane pilot upload --api-key-path "$PWD/iTunesApiKey.json" --apple_id "${{ inputs.itc_app_apple_id }}" --ipa $GITHUB_WORKSPACE/build/*.ipa --skip_submission --skip_waiting_for_build_processing --verbose
+      shell: bash
+
