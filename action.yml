@@ -64,6 +64,13 @@ runs:
     
     - run: bundle exec pod install
       shell: bash
+      
+    - run: |
+        for f in "${{ inputs.app_scheme }}/${{ inputs.app_scheme }}/Supporting Files/Info.plist"
+        do
+          /usr/libexec/PlistBuddy "$f" -c "Set :CFBundleVersion $GITHUB_RUN_NUMBER"
+        done
+      shell: bash
         
     - run: |
         xcodebuild -workspace ${{ inputs.app_workspace }} \
