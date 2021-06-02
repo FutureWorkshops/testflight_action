@@ -42,7 +42,7 @@ runs:
   using: "composite"
   steps:
   
-    - run: sudo gem install fastlane
+    - run: sudo gem install fastlane -v "2.183.2"
       shell: bash
       
     - run: |
