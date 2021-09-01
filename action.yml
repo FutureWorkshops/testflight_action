@@ -42,7 +42,8 @@ runs:
   using: "composite"
   steps:
 
-    - run: |
+    - name: Create iTunesApiKey
+      run: |
         cat > "$PWD/iTunesApiKey.json" << 'EOT'
         {
           "key_id": "${{ inputs.itc_key_id }}",
@@ -53,22 +54,27 @@ runs:
         EOT
       shell: bash
 
-    - run: bundle install
+    - name: Install gems
+      run: bundle install
       shell: bash
       
-    - run: bundle exec fastlane sigh --api-key-path "$PWD/iTunesApiKey.json" --username "${{ inputs.itc_email }}"  --team_id "${{ inputs.team_id }}" --provisioning_name "${{ inputs.provisioning_profile_name }}" --filename "profile.mobileprovision" --cert_owner_name "${{ inputs.certificate_owner }}" -a "${{ inputs.bundle_id }}" --verbose
-      shell: bash
-    
-    - run: bundle exec pod install
+    - name: Install pods
+      run: bundle exec pod install
       shell: bash
       
-    - run: |
+    - name: Download provisioning file
+      run: bundle exec fastlane sigh --api-key-path "$PWD/iTunesApiKey.json" --username "${{ inputs.itc_email }}"  --team_id "${{ inputs.team_id }}" --provisioning_name "${{ inputs.provisioning_profile_name }}" --filename "profile.mobileprovision" --cert_owner_name "${{ inputs.certificate_owner }}" -a "${{ inputs.bundle_id }}" --verbose
+      shell: bash
+      
+    - name: Set Bundle version
+      run: |
         for f in "${{ inputs.app_scheme }}/${{ inputs.app_scheme }}/Supporting Files/Info.plist"
         do
           /usr/libexec/PlistBuddy "$f" -c "Set :CFBundleVersion $GITHUB_RUN_NUMBER"
         done
       shell: bash
         
+    - name: Clean build archive
     - run: |
         xcodebuild -workspace ${{ inputs.app_workspace }} \
             -scheme ${{ inputs.app_scheme }} \
@@ -79,7 +85,8 @@ runs:
             clean archive | xcpretty
       shell: bash
       
-    - run: |
+    - name: Create export options
+      run: |
         cat > "$PWD/ExportOptions.plist" << 'EOT'
         <?xml version="1.0" encoding="UTF-8"?>
         <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -101,7 +108,8 @@ runs:
         EOT
       shell: bash 
         
-    - run: |
+    - name: Export IPA
+      run: |
         xcodebuild -archivePath $PWD/build/App.xcarchive \
             -exportPath $PWD/build \
             -allowProvisioningUpdates \
@@ -109,6 +117,6 @@ runs:
             -exportArchive | xcpretty
       shell: bash
       
-    - run: bundle exec fastlane pilot upload --api-key-path "$PWD/iTunesApiKey.json" --apple_id "${{ inputs.itc_app_apple_id }}" --ipa $GITHUB_WORKSPACE/build/*.ipa --skip_submission --skip_waiting_for_build_processing --verbose
+    - name: Upload to TestFlight
+      run: bundle exec fastlane pilot upload --api-key-path "$PWD/iTunesApiKey.json" --apple_id "${{ inputs.itc_app_apple_id }}" --ipa $GITHUB_WORKSPACE/build/*.ipa --skip_submission --skip_waiting_for_build_processing --verbose
       shell: bash
-
